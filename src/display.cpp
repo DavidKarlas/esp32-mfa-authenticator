@@ -121,7 +121,7 @@ void init_display(Configuration config)
     ESP_LOGD(TAG, "initializing tft");
     tft.begin();
     tft.setSwapBytes(true);
-    tft.fillScreen(ILI9341_PINK);
+    tft.fillScreen(TFT_PINK);
     // NOTE: Landscape orientation
     tft.setRotation(2);
     ESP_LOGD(TAG, "tft initialized");

@@ -15,6 +15,12 @@ struct Calibration cal = {
     .y_min = 0,
     .y_max = 0};
 
+#define I2C_SDA 33
+#define I2C_SCL 32
+#define TP_RST 25
+#define TP_INT 21
+CST820 touch(I2C_SDA, I2C_SCL, TP_RST, TP_INT);
+
 void init_touch(
     bool calibrate,
     TouchCallback single_touch_handler,
@@ -25,24 +31,11 @@ void init_touch(
     _single_touch_handler = single_touch_handler;
     _double_touch_handler = double_touch_handler;
 
-    pinMode(TOUCH_MOSI, OUTPUT);
-    pinMode(TOUCH_MISO, INPUT);
-    pinMode(TOUCH_CLK, OUTPUT);
-    pinMode(TOUCH_CS, OUTPUT);
-    digitalWrite(TOUCH_CS, HIGH);
-    digitalWrite(TOUCH_CLK, LOW);
-
-    if ((!SPIFFS.begin(true)) || (!touch_load_calibration() || (calibrate)))
-    {
-        ESP_LOGI(TAG, "touch must be calibrated");
-        is_calibrated = false;
-    }
-    else
-    {
-        ESP_LOGI(TAG, "touch is calibrated");
-        touch_register();
-        is_calibrated = true;
-    }
+    // touch.begin();
+    // uint16_t touchX, touchY;
+    // uint8_t gesture;
+    // touch.getTouch(&touchX, &touchY, &gesture);
+    // ESP_LOGI(TAG, "touch got: x=%d, y=%d, gesture=%d", touchX, touchY, gesture);
 
     ESP_LOGI(TAG, "touch initialized");
 }
@@ -178,51 +171,25 @@ struct Point touch_get_touch()
 
 void touch_change_handler(lv_indev_drv_t *touch_driver, lv_indev_data_t *touch_data)
 {
-    Point touched_point = touch_get_touch();
-    int16_t tmp_touched_point_x = touched_point.x;
-    int16_t tmp_touched_point_y = touched_point.y;
+    bool touched;
+    uint8_t gesture;
+    uint16_t touchX, touchY;
 
-    // NOTE: swapping because the TFT is rotated
-    touched_point.x = tmp_touched_point_y;
-    touched_point.y = tmp_touched_point_x;
-    if (touched_point.x >= 0 && touched_point.x < DISPLAY_WIDTH && touched_point.y >= 0 && touched_point.y < DISPLAY_HEIGHT)
+    touched = touch.getTouch(&touchX, &touchY, &gesture);
+
+    if (!touched)
     {
-        count_touch_releases = true;
-        touch_data->state = LV_INDEV_STATE_PRESSED;
-        touch_data->point.x = touched_point.x;
-        touch_data->point.y = touched_point.y;
+        touch_data->state = LV_INDEV_STATE_REL;
     }
     else
     {
-        touch_data->state = LV_INDEV_STATE_RELEASED;
-        if (count_touch_releases)
-        {
-            count_touch_releases = false;
-            uint32_t touch_release_time = millis();
-            if (!first_touch_release_time)
-            {
+        touch_data->state = LV_INDEV_STATE_PR;
 
-                first_touch_release_time = touch_release_time;
-            }
+        /*Set the coordinates*/
+        touch_data->point.x =  DISPLAY_WIDTH - touchX;
+        touch_data->point.y = DISPLAY_HEIGHT - touchY;
 
-            number_touch_releases++;
-        }
-    }
-
-    if (millis() - first_touch_release_time > TOUCH_DOUBLE_TOUCH_INTERVAL)
-    {
-        if (number_touch_releases == 2)
-        {
-            _double_touch_handler();
-        }
-
-        if (number_touch_releases == 1)
-        {
-            _single_touch_handler();
-        }
-
-        number_touch_releases = 0;
-        first_touch_release_time = 0;
+        ESP_LOGD(TAG, "touch detected at x=%d, y=%d", touch_data->point.x, touch_data->point.y);
     }
 }
 
@@ -238,6 +205,7 @@ void touch_register()
     lv_indev_drv_init(&touch_driver);
     touch_driver.disp = disp;
     touch_driver.type = LV_INDEV_TYPE_POINTER;
+    touch.begin();
     touch_driver.read_cb = touch_change_handler;
     lv_indev_t *indev = lv_indev_drv_register(&touch_driver);
     if (!indev)
